@@ -1,0 +1,78 @@
+name: Thompson Cigar Sampler Scraper
+
+on:
+  schedule:
+    # Run daily at 8:00 AM UTC (3:00 AM EST)
+    - cron: '0 8 * * *'
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  scrape-deals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45 # Medium site with 2 pages plus individual product page visits
+    
+    steps:
+    - name: Checkout private repository
+      uses: actions/checkout@v4
+      with:
+        repository: SnickerSec/cigar-things
+        token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+      
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install Chrome
+      uses: browser-actions/setup-chrome@v1
+      with:
+        chrome-version: stable
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Install Chrome WebDriver
+      run: |
+        # ChromeDriver will be automatically installed by webdriver-manager
+        echo "ChromeDriver will be installed automatically by webdriver-manager"
+        
+    - name: Run Thompson Cigar Sampler Scraper
+      env:
+        DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+        MAX_PAGES: 5  # Increased for more product coverage
+        PYTHONPATH: ${{ github.workspace }}
+      run: |
+        cd ${{ github.workspace }}
+        python app/scrapers/deals/thompson_cigar_scraper.py
+        
+    - name: Upload CSV results as artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: thompson-cigar-results-${{ github.run_number }}
+        path: |
+          data/exports/csv/thompsoncigar_deals_*.csv
+          data/exports/csv/thompsoncigar_deals_*_metadata.txt
+        retention-days: 7
+        
+    - name: Generate summary report
+      if: success()
+      run: |
+        echo "## 📊 Thompson Cigar Sampler Scraper Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Deal scraper completed successfully" >> $GITHUB_STEP_SUMMARY
+        echo "- 📄 Scraped 2 pages of sampler deals (90 per page)" >> $GITHUB_STEP_SUMMARY
+        echo "- 🏷️ Extracted MSRP prices from individual product pages" >> $GITHUB_STEP_SUMMARY
+        echo "- 🗄️ Data saved to Railway PostgreSQL database" >> $GITHUB_STEP_SUMMARY
+        echo "- 📁 CSV files available as artifacts" >> $GITHUB_STEP_SUMMARY
+        echo "- 🏷️ Brand matching from database brands table" >> $GITHUB_STEP_SUMMARY
+        echo "- 📊 Quantity detection and price per cigar calculations" >> $GITHUB_STEP_SUMMARY
+        
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "🚨 Thompson Cigar Sampler Scraper failed!"
+        echo "Check the logs above for details"
+        echo "## ❌ Thompson Cigar Sampler Scraper Failed" >> $GITHUB_STEP_SUMMARY
+        echo "The deal scraper encountered an error. Check the logs for details." >> $GITHUB_STEP_SUMMARY

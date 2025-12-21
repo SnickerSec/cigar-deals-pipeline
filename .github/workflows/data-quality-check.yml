@@ -1,0 +1,167 @@
+name: Data Quality Check
+
+on:
+  schedule:
+    # Run weekly on Sundays at 9 AM UTC
+    - cron: '0 9 * * 0'
+  workflow_dispatch:
+    inputs:
+      fix_brands:
+        description: 'Fix missing brands using brand extraction'
+        required: false
+        default: 'false'
+        type: boolean
+      fix_prices:
+        description: 'Remove deals with zero/null prices'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  quality-check:
+    name: Data Quality Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      with:
+        repository: SnickerSec/cigar-things
+        token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install psycopg2-binary
+
+      - name: Run data quality check
+        env:
+          DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+          FIX_BRANDS: ${{ github.event.inputs.fix_brands || 'false' }}
+          FIX_PRICES: ${{ github.event.inputs.fix_prices || 'false' }}
+        run: |
+          python << 'EOF'
+          import psycopg2
+          import os
+          from datetime import datetime, timezone
+
+          DATABASE_URL = os.environ.get('DATABASE_URL')
+          FIX_BRANDS = os.environ.get('FIX_BRANDS', 'false').lower() == 'true'
+          FIX_PRICES = os.environ.get('FIX_PRICES', 'false').lower() == 'true'
+
+          if not DATABASE_URL:
+              print("::error::DATABASE_URL not set")
+              exit(1)
+
+          conn = psycopg2.connect(DATABASE_URL)
+          cursor = conn.cursor()
+
+          print("## Data Quality Report")
+          print(f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n")
+
+          # 1. Check total records
+          cursor.execute("SELECT COUNT(*) FROM deals")
+          total_deals = cursor.fetchone()[0]
+          print(f"**Total Deals:** {total_deals}\n")
+
+          # 2. Check missing brands
+          cursor.execute("""
+              SELECT COUNT(*) FROM deals
+              WHERE brand IS NULL OR brand = '' OR brand = 'Unbranded'
+          """)
+          missing_brands = cursor.fetchone()[0]
+          brand_pct = (missing_brands / total_deals * 100) if total_deals > 0 else 0
+          print(f"**Missing Brands:** {missing_brands} ({brand_pct:.1f}%)")
+
+          # 3. Check zero prices
+          cursor.execute("""
+              SELECT COUNT(*) FROM deals
+              WHERE sale_price IS NULL OR sale_price = 0
+          """)
+          zero_prices = cursor.fetchone()[0]
+          price_pct = (zero_prices / total_deals * 100) if total_deals > 0 else 0
+          print(f"**Zero/Null Prices:** {zero_prices} ({price_pct:.1f}%)")
+
+          # 4. Check duplicate URLs
+          cursor.execute("""
+              SELECT COUNT(*) FROM (
+                  SELECT product_url FROM deals
+                  GROUP BY product_url HAVING COUNT(*) > 1
+              ) dupes
+          """)
+          duplicates = cursor.fetchone()[0]
+          print(f"**Duplicate URLs:** {duplicates}\n")
+
+          # Fix missing brands if requested
+          if FIX_BRANDS and missing_brands > 0:
+              print("### Fixing Missing Brands\n")
+
+              # Load known brands
+              cursor.execute("SELECT name FROM brands ORDER BY LENGTH(name) DESC")
+              known_brands = [row[0] for row in cursor.fetchall()]
+              print(f"Loaded {len(known_brands)} known brands")
+
+              # Get deals with missing brands
+              cursor.execute("""
+                  SELECT id, product_name FROM deals
+                  WHERE brand IS NULL OR brand = '' OR brand = 'Unbranded'
+              """)
+              unbranded_deals = cursor.fetchall()
+
+              fixed_count = 0
+              for deal_id, product_name in unbranded_deals:
+                  if not product_name:
+                      continue
+
+                  product_lower = product_name.lower()
+                  matched_brand = None
+
+                  for brand in known_brands:
+                      if brand.lower() in product_lower:
+                          matched_brand = brand
+                          break
+
+                  if matched_brand:
+                      cursor.execute(
+                          "UPDATE deals SET brand = %s WHERE id = %s",
+                          (matched_brand, deal_id)
+                      )
+                      fixed_count += 1
+
+              conn.commit()
+              print(f"Fixed {fixed_count} deals with missing brands\n")
+
+          # Fix zero prices if requested
+          if FIX_PRICES and zero_prices > 0:
+              print("### Removing Zero Price Deals\n")
+              cursor.execute("""
+                  DELETE FROM deals
+                  WHERE sale_price IS NULL OR sale_price = 0
+              """)
+              deleted = cursor.rowcount
+              conn.commit()
+              print(f"Removed {deleted} deals with zero/null prices\n")
+
+          # Final summary
+          print("### Summary")
+          if FIX_BRANDS or FIX_PRICES:
+              cursor.execute("SELECT COUNT(*) FROM deals")
+              new_total = cursor.fetchone()[0]
+              cursor.execute("SELECT COUNT(*) FROM deals WHERE brand IS NULL OR brand = '' OR brand = 'Unbranded'")
+              new_missing = cursor.fetchone()[0]
+              print(f"- Total deals: {new_total}")
+              print(f"- Missing brands: {new_missing}")
+          else:
+              print("Run with fix_brands=true or fix_prices=true to apply fixes")
+
+          conn.close()
+          EOF
+
+      - name: Generate summary
+        run: |
+          echo "## Data Quality Check Complete" >> $GITHUB_STEP_SUMMARY
+          echo "Check the logs for detailed report." >> $GITHUB_STEP_SUMMARY

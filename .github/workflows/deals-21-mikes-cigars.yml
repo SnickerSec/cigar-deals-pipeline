@@ -1,0 +1,73 @@
+name: Mike's Cigars Scraper
+
+on:
+  schedule:
+    # Run daily at 1:00 PM UTC
+    - cron: '0 13 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  scrape-mikes-cigars:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20 # Botasaurus scraper
+
+    steps:
+    - name: Checkout private repository
+      uses: actions/checkout@v4
+      with:
+        repository: SnickerSec/cigar-things
+        token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install Chrome
+      uses: browser-actions/setup-chrome@v1
+      with:
+        chrome-version: stable
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run Mike's Cigars Scraper
+      env:
+        DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+        PYTHONPATH: ${{ github.workspace }}
+        MAX_PRODUCTS: 150  # Increased for more add-on deals
+      run: |
+        cd ${{ github.workspace }}
+        python app/scrapers/deals/mikes_cigars_scraper.py
+
+    - name: Upload CSV results as artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: mikes-cigars-specials-${{ github.run_number }}
+        path: |
+          data/exports/csv/mikes_cigars_*.csv
+        retention-days: 7
+
+    - name: Generate summary report
+      if: success()
+      run: |
+        echo "## 📊 Mike's Cigars Scraper Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Mike's Cigars scraper completed successfully" >> $GITHUB_STEP_SUMMARY
+        echo "- 🎯 Scraped Specials section with promotional add-ons" >> $GITHUB_STEP_SUMMARY
+        echo "- 🏢 Mike's Cigars - NYC's premier cigar retailer since 1950" >> $GITHUB_STEP_SUMMARY
+        echo "- 🗽 Iconic New York City cigar destination" >> $GITHUB_STEP_SUMMARY
+        echo "- 💰 Features incredible add-on deals (often 90%+ off)" >> $GITHUB_STEP_SUMMARY
+        echo "- 🚀 Uses botasaurus for reliable scraping with Magento support" >> $GITHUB_STEP_SUMMARY
+        echo "- 🗄️ Data saved to Railway PostgreSQL database" >> $GITHUB_STEP_SUMMARY
+        echo "- 📁 CSV files available as artifacts" >> $GITHUB_STEP_SUMMARY
+
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "🚨 Mike's Cigars scraper failed!"
+        echo "Check the logs above for details"
+        echo "## ❌ Mike's Cigars Scraper Failed" >> $GITHUB_STEP_SUMMARY
+        echo "The Mike's Cigars scraper encountered an error. Check the logs for details." >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,47 @@
+name: Update Brands Database
+
+on:
+  # Run daily at 3 AM UTC to update brand list
+  schedule:
+    - cron: "0 3 * * *"
+
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  update-brands:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout private repository
+        uses: actions/checkout@v4
+      with:
+        repository: SnickerSec/cigar-things
+        token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install Chrome browser
+        uses: browser-actions/setup-chrome@latest
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run combined brand scraper
+        env:
+          DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+        run: |
+          echo "🏷️ Starting combined brand scraper..."
+          python app/scrapers/brands/combined_brand_scraper.py
+          echo "✅ Combined brand scraper completed successfully!"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Brand update job failed - check logs"
+          # You can add webhook notifications here if needed

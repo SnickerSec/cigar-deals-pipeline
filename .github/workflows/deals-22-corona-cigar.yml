@@ -1,0 +1,73 @@
+name: Corona Cigar Scraper
+
+on:
+  schedule:
+    # Run daily at 1:30 PM UTC
+    - cron: '30 13 * * *'
+  workflow_dispatch:
+
+jobs:
+  scrape-corona-cigar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+    - name: Checkout private repository
+      uses: actions/checkout@v4
+      with:
+        repository: SnickerSec/cigar-things
+        token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install Chrome
+      uses: browser-actions/setup-chrome@v1
+      with:
+        chrome-version: stable
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run Corona Cigar Scraper
+      env:
+        DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+        PYTHONPATH: ${{ github.workspace }}
+        MAX_PRODUCTS: 100  # Increased for broader coverage
+      run: |
+        cd ${{ github.workspace }}
+        python app/scrapers/deals/corona_cigar_scraper.py
+
+    - name: Upload CSV results as artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: corona-cigar-deals-${{ github.run_number }}
+        path: |
+          data/exports/csv/corona_cigar_*.csv
+        retention-days: 7
+
+    - name: Generate summary report
+      if: success()
+      run: |
+        echo "## 📊 Corona Cigar Scraper Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Corona Cigar scraper completed successfully" >> $GITHUB_STEP_SUMMARY
+        echo "- 🎯 Scraped Deals and Clearance sections" >> $GITHUB_STEP_SUMMARY
+        echo "- 🏢 Corona Cigar - Orlando's premier cigar retailer since 1996" >> $GITHUB_STEP_SUMMARY
+        echo "- 🌴 Florida-based retailer complementing NYC coverage" >> $GITHUB_STEP_SUMMARY
+        echo "- 💰 Features significant discounts (50-65% off)" >> $GITHUB_STEP_SUMMARY
+        echo "- 🚀 Uses botasaurus for reliable scraping with BigCommerce support" >> $GITHUB_STEP_SUMMARY
+        echo "- 🗄️ Data saved to Railway PostgreSQL database" >> $GITHUB_STEP_SUMMARY
+        echo "- 📁 CSV files available as artifacts" >> $GITHUB_STEP_SUMMARY
+
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "🚨 Corona Cigar scraper failed!"
+        echo "Check the logs above for details"
+        echo "## ❌ Corona Cigar Scraper Failed" >> $GITHUB_STEP_SUMMARY
+        echo "The Corona Cigar scraper encountered an error. Check the logs for details." >> $GITHUB_STEP_SUMMARY

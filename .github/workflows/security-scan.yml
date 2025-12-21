@@ -1,0 +1,138 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run weekly on Sundays at midnight UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:  # Allow manual triggers
+
+jobs:
+  bandit-sast:
+    name: SAST (Bandit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      with:
+        repository: SnickerSec/cigar-things
+        token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Bandit
+        run: pip install bandit[toml]
+
+      - name: Run Bandit security scan
+        run: |
+          bandit -r app/ bin/ scripts/ config/ \
+            -f json -o bandit-report.json \
+            --severity-level medium \
+            --confidence-level medium \
+            -x "*/tests/*,*/__pycache__/*" \
+            || true
+
+      - name: Display Bandit results
+        run: |
+          echo "=== Bandit Security Scan Results ==="
+          bandit -r app/ bin/ scripts/ config/ \
+            --severity-level medium \
+            --confidence-level medium \
+            -x "*/tests/*,*/__pycache__/*" \
+            || true
+
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
+      - name: Fail on high severity issues
+        run: |
+          bandit -r app/ bin/ scripts/ config/ \
+            --severity-level high \
+            --confidence-level high \
+            -x "*/tests/*,*/__pycache__/*"
+
+  dependency-scan:
+    name: Dependency Vulnerabilities (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      with:
+        repository: SnickerSec/cigar-things
+        token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Install project dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pip-audit
+        run: |
+          pip-audit --format json --output pip-audit-report.json || true
+          echo "=== Dependency Vulnerability Scan Results ==="
+          pip-audit || true
+
+      - name: Upload pip-audit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pip-audit-report
+          path: pip-audit-report.json
+
+  secret-scan:
+    name: Secret Detection (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      with:
+        repository: SnickerSec/cigar-things
+        token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        with:
+          fetch-depth: 0  # Full history for comprehensive scan
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: false
+
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [bandit-sast, dependency-scan, secret-scan]
+    if: always()
+    steps:
+      - name: Check job results
+        run: |
+          echo "=== Security Scan Summary ==="
+          echo "SAST (Bandit): ${{ needs.bandit-sast.result }}"
+          echo "Dependency Scan: ${{ needs.dependency-scan.result }}"
+          echo "Secret Detection: ${{ needs.secret-scan.result }}"
+
+          if [[ "${{ needs.bandit-sast.result }}" == "failure" ]] || \
+             [[ "${{ needs.dependency-scan.result }}" == "failure" ]] || \
+             [[ "${{ needs.secret-scan.result }}" == "failure" ]]; then
+            echo ""
+            echo "One or more security scans found issues. Please review the logs above."
+            exit 1
+          fi
+
+          echo ""
+          echo "All security scans passed!"

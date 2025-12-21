@@ -1,0 +1,83 @@
+name: Cigar.com Daily Deal Scraper
+
+on:
+  schedule:
+    # Run once daily at 7 AM UTC
+    - cron: '0 7 * * *'
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  scrape-cigarcom-daily-deals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30 # Should be fast with cloudscraper
+    
+    steps:
+    - name: Checkout private repository
+      uses: actions/checkout@v4
+      with:
+        repository: SnickerSec/cigar-things
+        token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+      
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install Chrome
+      uses: browser-actions/setup-chrome@v1
+      with:
+        chrome-version: stable
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Install Chrome WebDriver
+      run: |
+        # ChromeDriver will be automatically installed by webdriver-manager as fallback
+        echo "ChromeDriver will be installed automatically by webdriver-manager if needed"
+        
+    - name: Run Cigar.com Daily Deal Scraper
+      env:
+        DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+        MAX_PAGES: 1  # Daily deals are always on a single page
+        PYTHONPATH: ${{ github.workspace }}
+      run: |
+        cd ${{ github.workspace }}
+        python app/scrapers/daily/cigar_com_daily_scraper.py --headless
+        
+    - name: Upload CSV results as artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: cigar-com-daily-results-${{ github.run_number }}
+        path: |
+          data/exports/csv/cigarcomdaily_deals_*.csv
+          data/exports/csv/cigarcomdaily_deals_*_metadata.txt
+        retention-days: 7
+        
+    - name: Generate summary report
+      if: success()
+      run: |
+        echo "## 🔥 Cigar.com Daily Deal Scraper Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Cigar.com daily deals scraper completed successfully" >> $GITHUB_STEP_SUMMARY
+        echo "- 🎯 Scraped all daily deals from cigar.com daily deal page" >> $GITHUB_STEP_SUMMARY
+        echo "- ⚡ Uses cloudscraper as primary method (fast & efficient)" >> $GITHUB_STEP_SUMMARY
+        echo "- 🔄 Selenium fallback for dynamic content if needed" >> $GITHUB_STEP_SUMMARY
+        echo "- 🗄️ Data saved to Railway PostgreSQL database" >> $GITHUB_STEP_SUMMARY
+        echo "- 📁 CSV files available as artifacts" >> $GITHUB_STEP_SUMMARY
+        echo "- 🏷️ Advanced brand detection from database brands table" >> $GITHUB_STEP_SUMMARY
+        echo "- 📊 Complete quantity extraction and price per cigar calculations" >> $GITHUB_STEP_SUMMARY
+        echo "- 💰 Accurate pricing using price-product cost-text structure" >> $GITHUB_STEP_SUMMARY
+        echo "- 🖼️ Image URL extraction with specific selectors" >> $GITHUB_STEP_SUMMARY
+        echo "- 📦 Category: 'Cigar.com Daily' for easy filtering" >> $GITHUB_STEP_SUMMARY
+        echo "- 🔗 Unique product URLs to prevent database conflicts" >> $GITHUB_STEP_SUMMARY
+        
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "🚨 Cigar.com daily deals scraper failed!"
+        echo "Check the logs above for details"
+        echo "## ❌ Cigar.com Daily Deal Scraper Failed" >> $GITHUB_STEP_SUMMARY
+        echo "The Cigar.com daily deals scraper encountered an error. Check the logs for details." >> $GITHUB_STEP_SUMMARY

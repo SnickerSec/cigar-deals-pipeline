@@ -1,0 +1,73 @@
+name: Smoke Inn Scraper
+
+on:
+  schedule:
+    # Run daily at 2:30 PM UTC
+    - cron: '30 14 * * *'
+  workflow_dispatch:
+
+jobs:
+  scrape-smoke-inn:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+    - name: Checkout private repository
+      uses: actions/checkout@v4
+      with:
+        repository: SnickerSec/cigar-things
+        token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install Chrome
+      uses: browser-actions/setup-chrome@v1
+      with:
+        chrome-version: stable
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run Smoke Inn Scraper
+      env:
+        DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+        PYTHONPATH: ${{ github.workspace }}
+        MAX_PRODUCTS: 100  # Increased for more exclusive releases
+      run: |
+        cd ${{ github.workspace }}
+        python app/scrapers/deals/smoke_inn_scraper.py
+
+    - name: Upload CSV results as artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: smoke-inn-deals-${{ github.run_number }}
+        path: |
+          data/exports/csv/smoke_inn_*.csv
+        retention-days: 7
+
+    - name: Generate summary report
+      if: success()
+      run: |
+        echo "## 📊 Smoke Inn Scraper Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Smoke Inn scraper completed successfully" >> $GITHUB_STEP_SUMMARY
+        echo "- 🎯 Scraped Hot Weekly Deal and Clearance sections" >> $GITHUB_STEP_SUMMARY
+        echo "- 🏢 Smoke Inn - Florida's premier cigar retailer since 2004" >> $GITHUB_STEP_SUMMARY
+        echo "- 🌴 West Palm Beach-based with exclusive Microblend releases" >> $GITHUB_STEP_SUMMARY
+        echo "- 💰 Features rotating weekly deals and clearance items" >> $GITHUB_STEP_SUMMARY
+        echo "- 🚀 Uses botasaurus for reliable scraping with X-Cart support" >> $GITHUB_STEP_SUMMARY
+        echo "- 🗄️ Data saved to Railway PostgreSQL database" >> $GITHUB_STEP_SUMMARY
+        echo "- 📁 CSV files available as artifacts" >> $GITHUB_STEP_SUMMARY
+
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "🚨 Smoke Inn scraper failed!"
+        echo "Check the logs above for details"
+        echo "## ❌ Smoke Inn Scraper Failed" >> $GITHUB_STEP_SUMMARY
+        echo "The Smoke Inn scraper encountered an error. Check the logs for details." >> $GITHUB_STEP_SUMMARY

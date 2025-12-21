@@ -1,0 +1,124 @@
+# Casa de Montecristo Scraper Workflow
+#
+# ⚠️ STATUS: DISABLED - BLOCKED BY INCAPSULA ⚠️
+#
+# This workflow is DISABLED because Casa de Montecristo employs advanced
+# Incapsula (Imperva) anti-bot protection that successfully blocks:
+# - Cloudscraper (basic anti-bot bypass)
+# - Playwright-stealth (advanced browser emulation)
+#
+# The site uses sophisticated detection including:
+# - Canvas/WebGL fingerprinting
+# - Behavioral analysis (mouse movement, timing)
+# - TLS/HTTP/2 fingerprinting
+# - IP reputation scoring
+#
+# POTENTIAL SOLUTIONS (not implemented due to cost):
+# 1. Managed scraping API (ZenRows, ScraperAPI) - $50-200/month
+# 2. Residential proxies + advanced fingerprinting - $50-100/month + maintenance
+# 3. Manual workflow with human verification
+#
+# RECOMMENDATION: Keep disabled. Cost/benefit doesn't justify investment
+# when we have 26+ other retailers providing 4,000+ products.
+#
+# To enable (not recommended):
+# 1. Implement one of the solutions above
+# 2. Uncomment the schedule trigger below
+# 3. Test thoroughly before production use
+
+name: Casa de Montecristo Scraper
+
+# Currently disabled due to Incapsula protection
+# on:
+#   schedule:
+#     # Run daily at 10:00 AM UTC (5:00 AM EST)
+#     - cron: '0 10 * * *'
+#   workflow_dispatch:
+#     inputs:
+#       max_pages:
+#         description: 'Maximum pages to scrape'
+#         required: false
+#         default: '5'
+#         type: string
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: 'Maximum pages to scrape'
+        required: false
+        default: '5'
+        type: string
+
+jobs:
+  scrape-casa-de-montecristo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    
+    steps:
+    - name: Checkout private repository
+      uses: actions/checkout@v4
+      with:
+        repository: SnickerSec/cigar-things
+        token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget curl unzip xvfb
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Install Chrome and ChromeDriver
+      run: |
+        # Install Chrome
+        wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+        echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
+        
+        # ChromeDriver will be managed by webdriver-manager
+    
+    - name: Run Casa de Montecristo scraper
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+        HEADLESS_MODE: true
+        CI: true
+      run: |
+        cd ${{ github.workspace }}
+        python app/scrapers/deals/casa_de_montecristo_scraper.py
+    
+    - name: Upload scraped data
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: casa-de-montecristo-deals-${{ github.run_number }}
+        path: |
+          exports/csv/casa_de_montecristo_deals_*.csv
+          logs/
+        retention-days: 30
+    
+    - name: Display scraping summary
+      if: always()
+      run: |
+        echo "=== SCRAPING SUMMARY ==="
+        if [ -f exports/csv/casa_de_montecristo_deals_*.csv ]; then
+          echo "✅ CSV export created"
+          echo "Number of deals found: $(tail -n +2 exports/csv/casa_de_montecristo_deals_*.csv | wc -l)"
+        else
+          echo "❌ No CSV export found - scraping may have failed due to anti-bot protection"
+        fi
+        
+        echo ""
+        echo "=== IMPORTANT NOTES ==="
+        echo "⚠️  Casa de Montecristo uses Incapsula anti-bot protection"
+        echo "🤖 This may prevent automated scraping"
+        echo "📋 Manual verification may be required"

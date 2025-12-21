@@ -1,0 +1,76 @@
+name: Gotham Cigars Scraper
+
+on:
+  schedule:
+    # Run daily at 11:00 AM UTC
+    - cron: '0 11 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  scrape-gotham-cigars:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30 # Allow up to 30 minutes for Gotham Cigars scraper
+
+    steps:
+    - name: Checkout private repository
+      uses: actions/checkout@v4
+      with:
+        repository: SnickerSec/cigar-things
+        token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install Chrome
+      uses: browser-actions/setup-chrome@v1
+      with:
+        chrome-version: stable
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Install Chrome WebDriver
+      run: |
+        # ChromeDriver will be automatically installed by webdriver-manager
+        echo "ChromeDriver will be installed automatically by webdriver-manager"
+
+    - name: Run Gotham Cigars Scraper
+      env:
+        DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+        PYTHONPATH: ${{ github.workspace }}
+        MAX_PAGES: 15  # Increased for NYC market coverage
+      run: |
+        cd ${{ github.workspace }}
+        python app/scrapers/deals/gotham_cigars_scraper.py
+
+    - name: Upload CSV results as artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: gotham-cigars-deals-${{ github.run_number }}
+        path: |
+          gotham_cigars_*.csv
+          gotham_cigars_*_metadata.txt
+        retention-days: 7
+
+    - name: Generate summary report
+      if: success()
+      run: |
+        echo "## 📊 Gotham Cigars Scraper Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Gotham Cigars scraper completed successfully" >> $GITHUB_STEP_SUMMARY
+        echo "- 🎯 Scraped deals section with competitive pricing" >> $GITHUB_STEP_SUMMARY
+        echo "- 🏢 Gotham Cigars - Discount cigar retailer" >> $GITHUB_STEP_SUMMARY
+        echo "- 🗄️ Data saved to Railway PostgreSQL database" >> $GITHUB_STEP_SUMMARY
+        echo "- 📁 CSV files available as artifacts" >> $GITHUB_STEP_SUMMARY
+
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "🚨 Gotham Cigars scraper failed!"
+        echo "Check the logs above for details"
+        echo "## ❌ Gotham Cigars Scraper Failed" >> $GITHUB_STEP_SUMMARY
+        echo "The Gotham Cigars scraper encountered an error. Check the logs for details." >> $GITHUB_STEP_SUMMARY

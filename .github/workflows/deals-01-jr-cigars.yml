@@ -1,0 +1,77 @@
+name: JR Cigars Main Catalog Scraper
+
+on:
+  schedule:
+    # Run once daily at 3 AM UTC (adjust timezone as needed)
+    - cron: '0 3 * * *'
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  scrape-jr-cigars:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45 # Allow up to 45 minutes for full catalog scrape
+    
+    steps:
+    - name: Checkout private repository
+      uses: actions/checkout@v4
+      with:
+        repository: SnickerSec/cigar-things
+        token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+      
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install Chrome
+      uses: browser-actions/setup-chrome@v1
+      with:
+        chrome-version: stable
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Install Chrome WebDriver
+      run: |
+        # ChromeDriver will be automatically installed by webdriver-manager
+        echo "ChromeDriver will be installed automatically by webdriver-manager"
+        
+    - name: Run JR Cigars Main Scraper
+      env:
+        DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+        MAX_PAGES: 3  # Pages per section (4 sections = ~720 products)
+        SCRAPE_ALL_SECTIONS: true  # Enable multi-section scraping
+        PYTHONPATH: ${{ github.workspace }}
+      run: |
+        cd ${{ github.workspace }}
+        python app/scrapers/deals/jr_cigars_scraper.py
+        
+    - name: Upload CSV results as artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: jr-cigars-results-${{ github.run_number }}
+        path: |
+          jr_cigars_merged_*.csv
+          jr_cigars_merged_*_metadata.txt
+        retention-days: 7
+        
+    - name: Generate summary report
+      if: success()
+      run: |
+        echo "## 📊 JR Cigars Scraper Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Multi-section scraper completed successfully" >> $GITHUB_STEP_SUMMARY
+        echo "- 📦 Scraped 4 sections: Catalog Deals, Daily Deals, Clearance, Samplers" >> $GITHUB_STEP_SUMMARY
+        echo "- 📄 3 pages per section (~720 total products)" >> $GITHUB_STEP_SUMMARY
+        echo "- 🗄️ Data saved to Railway PostgreSQL database" >> $GITHUB_STEP_SUMMARY
+        echo "- 📁 CSV files available as artifacts" >> $GITHUB_STEP_SUMMARY
+        
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "🚨 JR Cigars main scraper failed!"
+        echo "Check the logs above for details"
+        echo "## ❌ JR Cigars Scraper Failed" >> $GITHUB_STEP_SUMMARY
+        echo "The main catalog scraper encountered an error. Check the logs for details." >> $GITHUB_STEP_SUMMARY

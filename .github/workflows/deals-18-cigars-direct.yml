@@ -1,0 +1,70 @@
+name: Cigars Direct Scraper
+
+on:
+  schedule:
+    # Run daily at 11:30 AM UTC
+    - cron: '30 11 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  scrape-cigars-direct:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20 # Cigars Direct scraper uses botasaurus
+
+    steps:
+    - name: Checkout private repository
+      uses: actions/checkout@v4
+      with:
+        repository: SnickerSec/cigar-things
+        token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install Chrome
+      uses: browser-actions/setup-chrome@v1
+      with:
+        chrome-version: stable
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run Cigars Direct Scraper
+      env:
+        DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+        PYTHONPATH: ${{ github.workspace }}
+      run: |
+        cd ${{ github.workspace }}
+        python app/scrapers/deals/cigars_direct_scraper.py
+
+    - name: Upload CSV results as artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: cigars-direct-deals-${{ github.run_number }}
+        path: |
+          data/exports/csv/cigars_direct_*.csv
+        retention-days: 7
+
+    - name: Generate summary report
+      if: success()
+      run: |
+        echo "## 📊 Cigars Direct Scraper Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Cigars Direct scraper completed successfully" >> $GITHUB_STEP_SUMMARY
+        echo "- 🎯 Scraped Hot Deals and Weekly Specials collections" >> $GITHUB_STEP_SUMMARY
+        echo "- 🏢 Cigars Direct - Premium cigar retailer (Shopify)" >> $GITHUB_STEP_SUMMARY
+        echo "- 🚀 Uses botasaurus for reliable scraping with anti-bot bypass" >> $GITHUB_STEP_SUMMARY
+        echo "- 🗄️ Data saved to Railway PostgreSQL database" >> $GITHUB_STEP_SUMMARY
+        echo "- 📁 CSV files available as artifacts" >> $GITHUB_STEP_SUMMARY
+
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "🚨 Cigars Direct scraper failed!"
+        echo "Check the logs above for details"
+        echo "## ❌ Cigars Direct Scraper Failed" >> $GITHUB_STEP_SUMMARY
+        echo "The Cigars Direct scraper encountered an error. Check the logs for details." >> $GITHUB_STEP_SUMMARY

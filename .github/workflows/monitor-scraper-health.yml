@@ -1,0 +1,127 @@
+name: Scraper Health Monitor
+
+on:
+  schedule:
+    # Run daily at 8 AM UTC (after all scrapers have run)
+    - cron: '0 8 * * *'
+  workflow_dispatch:  # Allow manual triggers
+
+jobs:
+  check-health:
+    name: Check Scraper Health
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      with:
+        repository: SnickerSec/cigar-things
+        token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install psycopg2-binary
+
+      - name: Check scraper health
+        env:
+          DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+        run: |
+          python << 'EOF'
+          import psycopg2
+          import os
+          from datetime import datetime, timedelta, timezone
+
+          DATABASE_URL = os.environ.get('DATABASE_URL')
+          if not DATABASE_URL:
+              print("::error::DATABASE_URL not set")
+              exit(1)
+
+          conn = psycopg2.connect(DATABASE_URL)
+          cursor = conn.cursor()
+
+          # Get data freshness by retailer
+          cursor.execute("""
+              SELECT
+                  website,
+                  COUNT(*) as total_deals,
+                  MAX(scraped_at) as last_scraped,
+                  COUNT(CASE WHEN sale_price IS NULL OR sale_price = 0 THEN 1 END) as zero_prices,
+                  COUNT(CASE WHEN brand IS NULL OR brand = '' OR brand = 'Unbranded' THEN 1 END) as missing_brands
+              FROM deals
+              GROUP BY website
+              ORDER BY last_scraped DESC
+          """)
+
+          rows = cursor.fetchall()
+          now = datetime.now(timezone.utc)
+
+          stale_retailers = []
+          problem_retailers = []
+
+          print("## Scraper Health Report")
+          print(f"Generated: {now.strftime('%Y-%m-%d %H:%M UTC')}\n")
+          print("| Retailer | Deals | Last Scraped | Stale | Zero Prices | Missing Brands |")
+          print("|----------|-------|--------------|-------|-------------|----------------|")
+
+          for row in rows:
+              retailer, total, last_scraped, zero_prices, missing_brands = row
+
+              if last_scraped:
+                  if last_scraped.tzinfo is None:
+                      last_scraped = last_scraped.replace(tzinfo=timezone.utc)
+                  age = now - last_scraped
+                  stale = "YES" if age > timedelta(days=2) else ""
+                  if stale:
+                      stale_retailers.append((retailer, age.days))
+                  last_str = last_scraped.strftime("%Y-%m-%d %H:%M")
+              else:
+                  last_str = "Never"
+                  stale = "YES"
+                  stale_retailers.append((retailer, 999))
+
+              zero_pct = (zero_prices / total * 100) if total > 0 else 0
+              brand_pct = (missing_brands / total * 100) if total > 0 else 0
+
+              if zero_pct > 10 or brand_pct > 80:
+                  problem_retailers.append((retailer, zero_pct, brand_pct))
+
+              print(f"| {retailer} | {total} | {last_str} | {stale} | {zero_prices} ({zero_pct:.0f}%) | {missing_brands} ({brand_pct:.0f}%) |")
+
+          conn.close()
+
+          # Summary
+          print("\n## Issues Found\n")
+
+          if stale_retailers:
+              print("### Stale Data (>2 days old)")
+              for retailer, days in sorted(stale_retailers, key=lambda x: -x[1]):
+                  print(f"- **{retailer}**: {days} days old")
+              print("")
+
+          if problem_retailers:
+              print("### Data Quality Issues")
+              for retailer, zero_pct, brand_pct in problem_retailers:
+                  issues = []
+                  if zero_pct > 10:
+                      issues.append(f"{zero_pct:.0f}% zero prices")
+                  if brand_pct > 80:
+                      issues.append(f"{brand_pct:.0f}% missing brands")
+                  print(f"- **{retailer}**: {', '.join(issues)}")
+              print("")
+
+          # Set exit code based on issues
+          if stale_retailers or problem_retailers:
+              print("::warning::Scraper health issues detected. Review the report above.")
+          else:
+              print("All scrapers healthy!")
+          EOF
+
+      - name: Generate summary
+        run: |
+          echo "## Scraper Health Check Complete" >> $GITHUB_STEP_SUMMARY
+          echo "Check the logs above for detailed health report." >> $GITHUB_STEP_SUMMARY

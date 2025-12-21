@@ -1,0 +1,64 @@
+name: Fix Missing Brands
+
+on:
+  # Run daily after brand update (3 AM) and deal scrapers
+  schedule:
+    - cron: "30 8 * * *"  # 8:30 AM UTC (after most scrapers finish)
+
+  # Allow manual triggering
+  workflow_dispatch:
+
+  # Run after brand database is updated
+  workflow_run:
+    workflows: ["Update Brands Database"]
+    types:
+      - completed
+
+jobs:
+  fix-brands:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout private repository
+        uses: actions/checkout@v4
+      with:
+        repository: SnickerSec/cigar-things
+        token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Preview brand fixes (dry run)
+        env:
+          DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          echo "🔍 Previewing brand fixes..."
+          python scripts/core/fix_missing_brands.py
+
+      - name: Apply brand fixes
+        env:
+          DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          echo "🔧 Applying brand fixes..."
+          python scripts/core/fix_missing_brands.py --execute
+
+      - name: Generate summary
+        if: success()
+        run: |
+          echo "## 🏷️ Brand Fix Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Missing brands have been fixed" >> $GITHUB_STEP_SUMMARY
+          echo "- 📊 Brands matched from product names using known brands database" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Brand fix job failed - check logs"

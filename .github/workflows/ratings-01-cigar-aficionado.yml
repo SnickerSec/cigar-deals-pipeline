@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 60 # Allow up to 60 minutes for large scrapes
 
     steps:
-    - name: Checkout private repository
+    - name: Checkout repository
       uses: actions/checkout@v4
       with:
         repository: SnickerSec/cigar-things

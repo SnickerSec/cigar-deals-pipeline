@@ -56,7 +56,7 @@ jobs:
     timeout-minutes: 45
     
     steps:
-    - name: Checkout private repository
+    - name: Checkout repository
       uses: actions/checkout@v4
       with:
         repository: SnickerSec/cigar-things

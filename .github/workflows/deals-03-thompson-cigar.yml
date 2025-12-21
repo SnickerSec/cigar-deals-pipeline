@@ -12,7 +12,7 @@ jobs:
     timeout-minutes: 45 # Medium site with 2 pages plus individual product page visits
     
     steps:
-    - name: Checkout private repository
+    - name: Checkout repository
       uses: actions/checkout@v4
       with:
         repository: SnickerSec/cigar-things

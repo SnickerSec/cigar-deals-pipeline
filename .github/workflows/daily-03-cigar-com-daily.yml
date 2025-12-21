@@ -12,7 +12,7 @@ jobs:
     timeout-minutes: 30 # Should be fast with cloudscraper
     
     steps:
-    - name: Checkout private repository
+    - name: Checkout repository
       uses: actions/checkout@v4
       with:
         repository: SnickerSec/cigar-things

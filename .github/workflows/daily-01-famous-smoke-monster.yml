@@ -12,7 +12,7 @@ jobs:
     timeout-minutes: 45 # Allow up to 45 minutes for Monster deals scrape
     
     steps:
-    - name: Checkout private repository
+    - name: Checkout repository
       uses: actions/checkout@v4
       with:
         repository: SnickerSec/cigar-things

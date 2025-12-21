@@ -12,7 +12,7 @@ jobs:
     timeout-minutes: 30 # Allow up to 30 minutes for Neptune scraper
     
     steps:
-    - name: Checkout private repository
+    - name: Checkout repository
       uses: actions/checkout@v4
       with:
         repository: SnickerSec/cigar-things

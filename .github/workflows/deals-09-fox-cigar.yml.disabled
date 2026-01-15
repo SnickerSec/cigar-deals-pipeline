@@ -9,7 +9,7 @@ on:
 jobs:
   scrape-fox-cigar:
     runs-on: ubuntu-latest
-    timeout-minutes: 30 # Allow up to 30 minutes for scraping
+    timeout-minutes: 15 # Keep scrape fast
 
     steps:
     - name: Checkout repository
@@ -41,7 +41,10 @@ jobs:
     - name: Run Fox Cigar Scraper
       env:
         DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
-        MAX_PAGES: 15  # Increased for broader deal coverage
+        MAX_PAGES: 2  # Limit listing pages
+        MAX_PRODUCTS: 50  # Cap total products to scrape
+        USE_BOTASAURUS: true  # Ensure botasaurus is used
+        SKIP_PRODUCT_DETAILS: true  # Skip individual product page scraping
         PYTHONPATH: ${{ github.workspace }}
       run: |
         cd ${{ github.workspace }}
@@ -63,10 +66,10 @@ jobs:
         echo "## 📊 Fox Cigar Scraper Summary" >> $GITHUB_STEP_SUMMARY
         echo "- ✅ Fox Cigar deals scraper completed successfully" >> $GITHUB_STEP_SUMMARY
         echo "- 🦊 Scraped deals from https://foxcigar.com/product-category/deals/" >> $GITHUB_STEP_SUMMARY
-        echo "- 📄 Scraped up to 10 pages of products" >> $GITHUB_STEP_SUMMARY
+        echo "- 📄 Scraped up to 2 listing pages (max 50 products)" >> $GITHUB_STEP_SUMMARY
         echo "- 🗄️ Data saved to Railway PostgreSQL database" >> $GITHUB_STEP_SUMMARY
         echo "- 📁 CSV files available as artifacts" >> $GITHUB_STEP_SUMMARY
-        echo "- 🔄 Using cloudscraper as primary method with Selenium fallback" >> $GITHUB_STEP_SUMMARY
+        echo "- 🚀 Using botasaurus for fast, reliable scraping" >> $GITHUB_STEP_SUMMARY
 
     - name: Notify on failure
       if: failure()
